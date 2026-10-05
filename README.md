@@ -1,3 +1,10 @@
+## Integrantes
+| Nome completo | RM |
+|---|---|
+| Eduardo Barcelos De Carvalho Braziliano | 573274 |
+| Julia Johanson Peniche Dias Da Silva | 572220 |
+| Lucas Bomfim Leite | 570420 |
+
 # Regressão Linear com Dados de Energia Solar (PVGIS)
 
 Projeto de Machine Learning que estima a **potência gerada por um sistema fotovoltaico** a partir de variáveis meteorológicas e solares, usando **Regressão Linear** e dados horários reais obtidos da API pública do [PVGIS](https://joint-research-centre.ec.europa.eu/pvgis-photovoltaic-geographical-information-system_en) (Joint Research Centre, Comissão Europeia).
