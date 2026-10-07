@@ -5,121 +5,112 @@
 | Julia Johanson Peniche Dias Da Silva | 572220 |
 | Lucas Bomfim Leite | 570420 |
 
-# Regressão Linear com Dados de Energia Solar (PVGIS)
+# Regressão linear com PIB e Índice ABCR
 
-Projeto de Machine Learning que estima a **potência gerada por um sistema fotovoltaico** a partir de variáveis meteorológicas e solares, usando **Regressão Linear** e dados horários reais obtidos da API pública do [PVGIS](https://joint-research-centre.ec.europa.eu/pvgis-photovoltaic-geographical-information-system_en) (Joint Research Centre, Comissão Europeia).
+Investigação da relação entre a **atividade econômica brasileira** (índice de volume do PIB) e o **fluxo de veículos nas rodovias** (Índice ABCR), com um modelo de **regressão linear** em Python (scikit-learn), usando 20 anos completos em comum (2006–2025).
 
-O notebook percorre o fluxo completo de um problema de regressão: obtenção dos dados via API, inspeção, visualização, correlação, separação treino/teste, treinamento de dois modelos, avaliação (MAE, MSE e R²) e análise crítica dos resultados.
+O **Produto Interno Bruto (PIB)** é o valor dos bens e serviços finais produzidos em um país durante um período. O **índice de volume do PIB** acompanha a evolução da produção descontando o efeito das mudanças de preços; na série utilizada, a média de 1995 corresponde a 100.
 
 ## Dados
 
-| Item | Valor |
+| Indicador | Fonte | Arquivo | Detalhe |
+|---|---|---|---|
+| Índice de volume do PIB | IBGE, [Tabela 1620 do SIDRA](https://sidra.ibge.gov.br/tabela/1620) | `dados/tabela1620.xlsx` e `dados/tabela1620.csv` | Série encadeada, sem ajuste sazonal, base média 1995 = 100. Brasil, "PIB a preços de mercado", 1º tri/2006 a 4º tri/2025. |
+| Índice ABCR | ABCR, [Índice ABCR](https://melhoresrodovias.org.br/indice-abcr_2/) (edição de agosto/2026) | `dados/abcr_0826.xlsx` | Aba `(C) Original` (série original, sem ajuste sazonal), bloco Brasil, coluna TOTAL (leves + pesados), base 1999 = 100. |
+
+### Base organizada (`dados/base_pib_abcr.csv`)
+
+| Coluna | Conteúdo |
 |---|---|
-| Fonte | PVGIS, endpoint `seriescalc` (dados horários), versão 5.3 |
-| Local | São Paulo – SP (lat. -23,5505; lon. -46,6333) |
-| Período | 2020 a 2022 |
-| Sistema simulado | 1 kWp, perdas de 14%, ângulos ótimos (`optimalangles=1`) |
-| Tamanho | 26.304 registros horários |
+| `Ano` | Ano de referência dos dois indicadores (2006 a 2025). |
+| `PIB_indice` | Média dos quatro índices trimestrais do PIB. |
+| `ABCR_indice` | Média dos doze índices mensais da ABCR. |
 
-Requisição utilizada:
+Foram usados os **números-índice**, não as variações percentuais. O notebook confere (com `assert`) que há 20 anos consecutivos, sem valores faltantes, 4 trimestres e 12 meses em cada ano. Também confere que o CSV e o XLSX da Tabela 1620 trazem os mesmos valores.
 
-```
-https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=-23.5505&lon=-46.6333&startyear=2020&endyear=2022&pvcalculation=1&peakpower=1&loss=14&optimalangles=1&outputformat=json
-```
+## Análise da relação
 
-Nenhum CSV pronto é utilizado: os dados são baixados diretamente da API ao executar o notebook.
+![Dispersão PIB x ABCR](images/dispersao.png)
 
-### Variáveis
+A **correlação de Pearson é ≈ 0,96**: relação positiva e muito forte, aproximadamente linear. O ano de 2020 (pandemia) fica abaixo da reta, pois o fluxo de veículos caiu muito mais do que o PIB. Como as duas séries crescem com o tempo, parte da correlação pode vir apenas dessa tendência em comum.
 
-| Coluna | Original (PVGIS) | Descrição |
-|---|---|---|
-| `potencia_W` | `P` | Potência do sistema FV (W) — **variável alvo (y)** |
-| `irradiancia_Wm2` | `G(i)` | Irradiância no plano dos módulos (W/m²) |
-| `altura_solar_graus` | `H_sun` | Altura do Sol (graus) |
-| `temp_C` | `T2m` | Temperatura do ar a 2 m (°C) |
-| `vento_ms` | `WS10m` | Velocidade do vento a 10 m (m/s) |
+## Modelo
 
-## Preparação dos dados
-
-- Não há valores ausentes.
-- **50,8%** dos registros (13.371) têm irradiância zero, ou seja, são horas noturnas.
-- Esses registros foram **removidos** (`irradiância > 0`), ficando **12.933 linhas**. Mantê-los inflaria o R² (prever 0 W à noite é trivial) e criaria correlações artificiais com temperatura e vento pelo ciclo dia/noite. O modelo, portanto, estima a potência *durante o período com geração*.
-
-## Exploração
-
-### Dispersão entre as variáveis de entrada e a potência
-
-![Gráficos de dispersão](images/dispersao.png)
-
-### Matriz de correlação
-
-![Matriz de correlação](images/correlacao.png)
-
-Correlação de cada variável com a potência:
-
-| Variável | Correlação (r) |
-|---|---|
-| `irradiancia_Wm2` | 0,998 |
-| `altura_solar_graus` | 0,675 |
-| `temp_C` | 0,387 |
-| `vento_ms` | 0,013 |
-
-A irradiância domina a relação (praticamente linear), e o vento tem correlação desprezível com a potência.
-
-## Modelos
-
-Divisão **80% treino / 20% teste** (`random_state=42`): 10.346 amostras de treino e 2.587 de teste. Os dois modelos usam a mesma divisão, então são avaliados nas mesmas linhas.
-
-- **Modelo 1 (`modeloLR1`)**: `irradiancia_Wm2`, `altura_solar_graus`, `temp_C`, `vento_ms`.
-- **Modelo 2 (`modeloLR2`)**: `altura_solar_graus`, `temp_C`, `vento_ms` (sem a irradiância, para medir o quanto ela contribui).
+- Entrada `X`: `PIB_indice`; alvo `y`: `ABCR_indice` (`LinearRegression`, `fit`, `predict`).
+- **Treino:** primeiros 16 anos (2006–2021). **Teste:** últimos 4 anos (2022–2025), em ordem cronológica, sem embaralhar.
+- Equação ajustada: **ABCR ≈ −56,79 + 1,2145 × PIB** (R² no treino ≈ 0,90).
 
 ### Resultados (conjunto de teste)
 
-| Modelo | Variáveis utilizadas | MAE (W) | MSE (W²) | R² |
-|---|---|---|---|---|
-| Modelo 1 | irradiância, altura solar, temperatura, vento | **9,296** | **140,03** | **0,9979** |
-| Modelo 2 | altura solar, temperatura, vento | 148,383 | 33.562,60 | 0,4862 |
+| Métrica | Valor |
+|---|---|
+| MAE | 4,95 |
+| MSE | 25,95 (RMSE ≈ 5,09) |
+| R² | 0,485 |
 
-![Real × previsto](images/real_vs_previsto.png)
+| Ano | PIB_indice | ABCR observado | ABCR previsto | Erro (prev − obs) | Erro % |
+|---|---|---|---|---|---|
+| 2022 | 178,05 | 154,12 | 159,46 | 5,34 | 3,46 |
+| 2023 | 183,82 | 163,49 | 166,47 | 2,98 | 1,82 |
+| 2024 | 190,10 | 168,88 | 174,10 | 5,22 | 3,09 |
+| 2025 | 194,45 | 173,12 | 179,38 | 6,26 | 3,62 |
+
+![Treino, teste e previsões](images/real_vs_previsto.png)
+
+**Significado das métricas:** o MAE é o erro médio em pontos de índice (≈ 5 pontos, cerca de 3% do nível do ABCR no teste); o MSE é o erro médio ao quadrado e penaliza erros grandes; o R² é a fração da variação do teste explicada pelo modelo, comparada a prever a média (1 = perfeito, 0 = igual à média).
 
 ## Conclusões
 
-- O **Modelo 1** é melhor nas três métricas (maior R², menor MAE e menor MSE). Sem a irradiância, o R² cai de 0,998 para 0,486.
-- A variável mais correlacionada com a potência (a irradiância) é também a que sustenta o melhor modelo, mas correlação alta, por si só, não garante o melhor conjunto: variáveis correlacionadas entre si (como irradiância e altura solar) trazem informação redundante.
-- Dificuldades para um modelo linear: não linearidade da eficiência do módulo (temperatura e baixa irradiância), multicolinearidade, dependência temporal dos dados horários (divisão aleatória pode deixar o teste parecido demais com o treino) e interações entre variáveis.
+1. Existe **relação positiva muito forte** entre o PIB e o fluxo de veículos (correlação ≈ 0,96): quando a atividade econômica cresce, o fluxo nas rodovias pedagiadas tende a crescer junto.
+2. O modelo produziu estimativas **próximas dos valores reais** (erros entre ≈ 2% e 4%), mas **superestimou os quatro anos de teste**. No período recente o fluxo cresceu menos por ponto de PIB do que a relação média 2006–2021 indicava. O R² moderado (0,48) reflete esse viés, e com apenas 4 pontos de teste ele é uma métrica instável.
+3. **Limitações:** só 20 observações anuais; séries com tendência em comum; 2020 é um ponto atípico no treino; o ABCR cobre rodovias pedagiadas, não todo o país; e as duas séries têm bases diferentes (1995 = 100 e 1999 = 100), então o coeficiente não é uma elasticidade.
+4. **Correlação alta não demonstra causa e efeito.** Para investigar causalidade seria preciso, por exemplo, usar variações (taxas de crescimento), outras variáveis e séries mais longas.
 
->  **Ressalva:** a potência `P` do PVGIS é **simulada** a partir da irradiância e da temperatura, não medida em uma usina real. Por isso o R² do Modelo 1 é tão alto (a regressão basicamente reaprende uma fórmula física). Com dados medidos de campo, espera-se desempenho menor.
+## Dificuldades e soluções
 
-##  Como executar
+| Dificuldade | Solução |
+|---|---|
+| A planilha da ABCR tem várias abas e blocos de colunas (Brasil, São Paulo, Paraná, Rio de Janeiro). | Usei a aba `(C) Original` e o bloco Brasil / TOTAL, conferindo os cabeçalhos. |
+| A aba `(D) Dessazonalizado` também traz números-índice. | Descartada: o enunciado pede séries sem ajuste sazonal. |
+| O CSV da Tabela 1620 tem linhas de cabeçalho com número de colunas diferente e quebra `pd.read_csv`. | Li o XLSX com `pandas` e usei o módulo `csv` só para validar os valores. |
+| PIB trimestral (4 valores/ano) e ABCR mensal (12 valores/ano). | Média anual das duas séries, com `assert` na contagem de períodos. |
+| A ABCR vai até agosto/2026, mas o PIB só até 2025. | Restringi a 2006–2025, os 20 anos completos em comum. |
+| No Google Colab, o notebook não encontrava a pasta `dados/`. | Célula inicial que clona o repositório (público, URL correta) quando a pasta não existe. |
 
-1. Clone o repositório:
-   ```bash
-   git clone <URL-DO-SEU-REPOSITORIO>
-   cd <NOME-DA-PASTA>
-   ```
-2. Instale as dependências:
-   ```bash
-   pip install requests numpy pandas matplotlib scikit-learn jupyter
-   ```
-3. Abra e execute o notebook (é necessário acesso à internet para consultar a API):
-   ```bash
-   jupyter notebook Regressao_Linear_Energia_Solar.ipynb
-   ```
+## Como executar
 
-Para usar outra cidade ou período, altere as variáveis `cidade`, `latitude`, `longitude`, `ano_ini` e `ano_fim` na célula da requisição.
+**No Google Colab:** abra o notebook, troque `REPO_URL` na primeira célula pela URL do repositório e execute as células em ordem. A célula clona o repositório e entra na pasta, e o restante roda normalmente. Se atualizar arquivos no GitHub depois do clone, reinicie a sessão (ou rode `!git pull` dentro da pasta do repositório).
 
-##  Estrutura
+**Localmente:**
+```bash
+git clone <URL-DO-SEU-REPOSITORIO>
+cd CP2_MLAM
+pip install numpy pandas matplotlib scikit-learn openpyxl jupyter
+jupyter notebook notebook_regressao_pib_abcr.ipynb
+```
+
+## Estrutura
 
 ```
-├── Regressao_Linear_Energia_Solar.ipynb   # notebook com todo o fluxo
-├── images/                                # gráficos usados neste README
+├── notebook_regressao_pib_abcr.ipynb   # fontes, dados, código, resultados e conclusão
+├── images/                             # gráficos usados neste README
+│   ├── dispersao.png
+│   └── real_vs_previsto.png
+├── dados/
+│   ├── abcr_0826.xlsx                  # Índice ABCR (série original)
+│   ├── tabela1620.xlsx                 # PIB, IBGE (Tabela 1620)
+│   ├── tabela1620.csv                  # mesma tabela em CSV
+│   └── base_pib_abcr.csv               # base final (Ano, PIB_indice, ABCR_indice)
 └── README.md
 ```
 
-##  Tecnologias
+## Tecnologias
 
-Python · Pandas · NumPy · Matplotlib · scikit-learn · Requests
+Python · Pandas · NumPy · Matplotlib · scikit-learn · openpyxl
 
-##  Referências
+## Referências
 
-- [PVGIS – Photovoltaic Geographical Information System (JRC/Comissão Europeia)](https://joint-research-centre.ec.europa.eu/pvgis-photovoltaic-geographical-information-system_en)
+- [IBGE, SIDRA, Tabela 1620](https://sidra.ibge.gov.br/tabela/1620)
+- [ABCR, Índice ABCR](https://melhoresrodovias.org.br/indice-abcr_2/)
+
+> Uma correlação alta, por si só, não demonstra uma relação de causa e efeito.
